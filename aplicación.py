@@ -36,7 +36,7 @@ with st.sidebar:
     df_res = pd.DataFrame(st.session_state.actas_trep)
     st.metric("Mesas Procesadas", f"{len(df_res)}")
     st.metric(
-        "Total Votos Totales",
+        "Suma Total General",
         f"{int(df_res['Total_General'].sum() if 'Total_General' in df_res else 0):,}",
     )
 
@@ -74,7 +74,8 @@ if archivo_foto is not None:
       else:
         with st.spinner("Leyendo número de mesa, listas y votos del acta..."):
           try:
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            # Modelo actualizado requerido por Google AI Studio
+            model = genai.GenerativeModel("gemini-3.8-flash")
             prompt = (
                 "Analiza detalladamente esta imagen de un Certificado de"
                 " Resultados TREP de Paraguay. Extrae con precisión los"
@@ -93,7 +94,7 @@ if archivo_foto is not None:
                 "11. Votos_Blanco: (casillero BLC)\n"
                 "12. Votos_Nulos: (casillero NUL)\n"
                 "13. Total_General: (casillero TOT general)\n"
-                "Devuelve solo los valores numéricos claros asociados a cada"
+                "Devuelve los valores numéricos claros asociados a cada"
                 " concepto."
             )
 
@@ -129,7 +130,9 @@ if archivo_foto is not None:
         c_l16 = st.number_input("Votos Lista 16:", min_value=0, step=1, value=4)
         c_l21 = st.number_input("Votos Lista 21:", min_value=0, step=1, value=4)
         c_l300 = st.number_input("Votos Lista 300:", min_value=0, step=1, value=0)
-        c_blc = st.number_input("Votos en Blanco (BLC):", min_value=0, step=1, value=10)
+        c_blc = st.number_input(
+            "Votos en Blanco (BLC):", min_value=0, step=1, value=10
+        )
         c_nul = st.number_input("Votos Nulos (NUL):", min_value=0, step=1, value=0)
         c_tot = st.number_input(
             "Total General (TOT):", min_value=0, step=1, value=228
