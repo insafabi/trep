@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="Lector de Actas TREP - IA", page_icon="🗳️", layout="wide"
 )
 
-# Configurar la API de Gemini
+# Configurar la API de Gemini mediante la barra lateral o secretos
 if "GOOGLE_API_KEY" in st.secrets:
   genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 else:
@@ -62,14 +62,20 @@ if archivo_foto is not None:
   with col2:
     st.subheader("2. Extracción Automática con IA")
     if st.button("🚀 Leer Datos del Acta", type="primary"):
-      if "GOOGLE_API_KEY" not in st.secrets and not locals().get(
-          "api_key_input"
-      ):
-        st.error("Falta configurar la API Key de Google Gemini.")
+      # Comprobar si hay API key configurada
+      api_key_disponible = False
+      if "GOOGLE_API_KEY" in st.secrets:
+        api_key_disponible = True
+      elif "api_key_input" in locals() and api_key_input:
+        api_key_disponible = True
+
+      if not api_key_disponible:
+        st.error("Por favor, ingresa tu API Key en la barra lateral izquierda.")
       else:
         with st.spinner("Leyendo números, mesa y votos del acta..."):
           try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            # Modelo actualizado de Gemini
+            model = genai.GenerativeModel("gemini-2.5-flash")
             prompt = (
                 "Analiza esta imagen de un Certificado de Resultados TREP de"
                 " Paraguay. Extrae estrictamente los siguientes valores en"
