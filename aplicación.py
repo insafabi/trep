@@ -75,7 +75,7 @@ if archivo_foto is not None:
         with st.spinner("Leyendo números, mesa y votos del acta..."):
           try:
             # Modelo actualizado de Gemini
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            model = genai.GenerativeModel("gemini-3.8-flash")
             prompt = (
                 "Analiza esta imagen de un Certificado de Resultados TREP de"
                 " Paraguay. Extrae estrictamente los siguientes valores en"
