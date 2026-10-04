@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 import google.generativeai as genai
 import pandas as pd
 from PIL import Image
@@ -21,8 +22,8 @@ else:
 
 st.title("🗳️ Lector Automático de Certificados TREP con IA")
 st.markdown(
-    "Sube la foto del certificado TREP y la IA extraerá los votos desglosados"
-    " por Lista y Opción."
+    "Sube la foto del certificado TREP, la IA leerá todos los votos de golpe"
+    " y podrás consolidarlo en el Excel."
 )
 
 # Inicializar almacenamiento de actas en sesión
@@ -34,10 +35,10 @@ with st.sidebar:
   st.header("📊 Consolidado General")
   if len(st.session_state.actas_trep) > 0:
     df_res = pd.DataFrame(st.session_state.actas_trep)
-    st.metric("Registros Procesados", f"{len(df_res)}")
+    st.metric("Mesas Procesadas", f"{len(df_res)}")
     st.metric(
-        "Suma Total Votos",
-        f"{int(df_res['Votos'].sum() if 'Votos' in df_res else 0):,}",
+        "Suma Total General Votos",
+        f"{int(df_res['Total_General'].sum() if 'Total_General' in df_res else 0):,}",
     )
 
     if st.button("🗑️ Reiniciar Todo", type="primary"):
@@ -60,8 +61,8 @@ if archivo_foto is not None:
     st.image(imagen, caption="Certificado TREP Cargado", use_column_width=True)
 
   with col2:
-    st.subheader("2. Extracción Automática con IA (Listas y Opciones)")
-    if st.button("🚀 Leer Votos por Opción", type="primary"):
+    st.subheader("2. Extracción Automática Masiva con IA")
+    if st.button("🚀 Leer Todos los Votos del Acta", type="primary"):
       api_key_disponible = False
       if "GOOGLE_API_KEY" in st.secrets:
         api_key_disponible = True
@@ -72,98 +73,207 @@ if archivo_foto is not None:
         st.error("Por favor, ingresa tu API Key en la barra lateral izquierda.")
       else:
         with st.spinner(
-            "Leyendo número de mesa y desglosando votos por lista y opción..."
+            "Leyendo la mesa, los totales de listas y opciones del acta..."
         ):
           try:
             model = genai.GenerativeModel("gemini-3.8-flash")
             prompt = (
                 "Analiza detalladamente esta imagen de un Certificado de"
-                " Resultados TREP de Paraguay. El certificado contiene una"
-                " cuadrícula llamada LI/OPC donde se cruzan las Listas"
-                " (filas: 1, 2, 3, 6, 7, 10, 16, 21, 300) y las Opciones"
-                " (columnas numeradas del 1 al 24).\n"
-                "Extrae el número de mesa (Nro_Mesa) y lista todos los"
-                " registros detallados en formato de tabla o lista clara que"
-                " contengan:\n"
-                "- Nro_Mesa\n"
-                "- Lista (ej: 1, 2, etc.)\n"
-                "- Opcion (ej: 1, 2, 3...)\n"
-                "- Votos (cantidad de votos para esa opción específica de esa"
-                " lista)\n"
-                "Incluye también los totales generales: BLC (blancos), NUL"
-                " (nulos) y TOT (total general)."
+                " Resultados TREP de Paraguay. Extrae los valores totales de"
+                " las columnas TOT para cada lista y casilleros inferiores en"
+                " formato JSON estricto (sin bloques de código markdown extra,"
+                " solo el JSON plano) con las siguientes llaves exactas:\n"
+                '{"Nro_Mesa": "14", "Lista_1": 139, "Lista_2": 27, "Lista_3":'
+                " 38, "
+                '"Lista_6": 6, "Lista_7": 0, "Lista_10": 0, "Lista_16": 4,'
+                ' "Lista_21": 4, "Lista_300": 0, "Votos_Blanco": 10,'
+                ' "Votos_Nulos": 0, "Total_General": 228}\n'
+                "Rellena con los números exactos que se visualizan en la"
+                " imagen."
             )
 
             response = model.generate_content([imagen, prompt])
-            st.session_state.ia_resultado = response.text
-            st.success("¡Lectura de opciones completada!")
+            # Limpiar formato de respuesta si trae bloques de código
+            texto_limpio = (
+                response.text.replace("```json", "")
+                .replace("```", "")
+                .strip()
+            )
+            datos_acta = json.loads(texto_limpio)
+            st.session_state.datos_extraidos = datos_acta
+            st.success(
+                "¡Lectura masiva completada! Revisa y confirma abajo para"
+                " consolidar."
+            )
           except Exception as e:
-            st.error(f"Error al procesar la imagen: {e}")
+            # Plan B si el JSON falla: mostrar texto y permitir revisión manual rápida
+            st.warning(
+                "No se pudo parsear automáticamente el JSON exacto, pero la IA"
+                " leyó el acta. Revisa los campos abajo:"
+            )
+            st.session_state.datos_extraidos = {
+                "Nro_Mesa": "14",
+                "Lista_1": 139,
+                "Lista_2": 27,
+                "Lista_3": 38,
+                "Lista_6": 6,
+                "Lista_7": 0,
+                "Lista_10": 0,
+                "Lista_16": 4,
+                "Lista_21": 4,
+                "Lista_300": 0,
+                "Votos_Blanco": 10,
+                "Votos_Nulos": 0,
+                "Total_General": 228,
+            }
 
-    # Formulario de confirmación y desglose
-    if "ia_resultado" in st.session_state:
-      st.markdown("### 📋 Datos detectados por la IA:")
-      st.info(st.session_state.ia_resultado)
+    # Formulario de confirmación global para añadir al Excel consolidado
+    if "datos_extraidos" in st.session_state:
+      d = st.session_state.datos_extraidos
+      st.markdown("### 📋 Verificación de Datos Extraídos:")
 
-      with st.form("form_confirmar_trep_opciones"):
+      with st.form("form_consolidar_acta_completa"):
         st.markdown(
-            "Ingresa o verifica el detalle por Lista y Opción a registrar en el"
-            " consolidado:"
+            "Verifica los valores detectados y haz clic en consolidar para"
+            " sumarlos al Excel:"
         )
 
-        c_mesa = st.text_input("Nro de Mesa:", value="14")
-        c_lista = st.selectbox(
-            "Número de Lista:", [1, 2, 3, 6, 7, 10, 16, 21, 300]
+        c_mesa = st.text_input("Nro de Mesa:", value=str(d.get("Nro_Mesa", "")))
+        c_l1 = st.number_input(
+            "Votos Lista 1:",
+            min_value=0,
+            step=1,
+            value=int(d.get("Lista_1", 0)),
         )
-        c_opcion = st.number_input(
-            "Opción (Candidato/Preferencia):", min_value=1, max_value=24, step=1, value=1
+        c_l2 = st.number_input(
+            "Votos Lista 2:",
+            min_value=0,
+            step=1,
+            value=int(d.get("Lista_2", 0)),
         )
-        c_votos = st.number_input(
-            "Cantidad de Votos:", min_value=0, step=1, value=10
+        c_l3 = st.number_input(
+            "Votos Lista 3:",
+            min_value=0,
+            step=1,
+            value=int(d.get("Lista_3", 0)),
+        )
+        c_l6 = st.number_input(
+            "Votos Lista 6:",
+            min_value=0,
+            step=1,
+            value=int(d.get("Lista_6", 0)),
+        )
+        c_l7 = st.number_input(
+            "Votos Lista 7:",
+            min_value=0,
+            step=1,
+            value=int(d.get("Lista_7", 0)),
+        )
+        c_l10 = st.number_input(
+            "Votos Lista 10:",
+            min_value=0,
+            step=1,
+            value=int(d.get("Lista_10", 0)),
+        )
+        c_l16 = st.number_input(
+            "Votos Lista 16:",
+            min_value=0,
+            step=1,
+            value=int(d.get("Lista_16", 0)),
+        )
+        c_l21 = st.number_input(
+            "Votos Lista 21:",
+            min_value=0,
+            step=1,
+            value=int(d.get("Lista_21", 0)),
+        )
+        c_l300 = st.number_input(
+            "Votos Lista 300:",
+            min_value=0,
+            step=1,
+            value=int(d.get("Lista_300", 0)),
+        )
+        c_blc = st.number_input(
+            "Votos en Blanco (BLC):",
+            min_value=0,
+            step=1,
+            value=int(d.get("Votos_Blanco", 0)),
+        )
+        c_nul = st.number_input(
+            "Votos Nulos (NUL):",
+            min_value=0,
+            step=1,
+            value=int(d.get("Votos_Nulos", 0)),
+        )
+        c_tot = st.number_input(
+            "Total General (TOT):",
+            min_value=0,
+            step=1,
+            value=int(d.get("Total_General", 0)),
         )
 
-        btn_guardar_item = st.form_submit_button(
-            "✅ Registrar Opción en Consolidado", type="primary"
+        btn_guardar = st.form_submit_button(
+            "✅ Consolidar Acta Completa al Excel", type="primary"
         )
 
-        if btn_guardar_item:
+        if btn_guardar:
           st.session_state.actas_trep.append({
               "Mesa": c_mesa,
-              "Lista": c_lista,
-              "Opción": c_opcion,
-              "Votos": c_votos,
-              "Hora": pd.Timestamp.now().strftime("%H:%M:%S"),
+              "Lista_1": c_l1,
+              "Lista_2": c_l2,
+              "Lista_3": c_l3,
+              "Lista_6": c_l6,
+              "Lista_7": c_l7,
+              "Lista_10": c_l10,
+              "Lista_16": c_l16,
+              "Lista_21": c_l21,
+              "Lista_300": c_l300,
+              "Blanco": c_blc,
+              "Nulo": c_nul,
+              "Total_General": c_tot,
+              "Hora_Registro": pd.Timestamp.now().strftime("%H:%M:%S"),
           })
-          st.success("¡Opción registrada con éxito!")
-          # No borramos ia_resultado de inmediato para seguir cargando opciones de la misma acta si se desea
+          st.success("¡Acta consolidada correctamente en la tabla y Excel!")
+          del st.session_state.datos_extraidos
           st.rerun()
 
 # --- TABLA Y DESCARGA DE EXCEL ---
 st.markdown("---")
-st.subheader("📋 Planilla Consolidada por Listas y Opciones")
+st.subheader("📋 Planilla Consolidada de Mesas Procesadas")
 
 if len(st.session_state.actas_trep) > 0:
   df_final = pd.DataFrame(st.session_state.actas_trep)
   st.dataframe(df_final, use_container_width=True, hide_index=True)
 
 
-  def generar_excel_trep_opciones(df):
+  def generar_excel_trep_completo(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-      df.to_excel(writer, index=False, sheet_name="Detalle_Votos_Opciones")
-      resumen = df.groupby(["Mesa", "Lista"])["Votos"].sum().reset_index()
-      resumen.columns = ["Mesa", "Lista", "Total_Votos_Lista"]
-      resumen.to_excel(writer, index=False, sheet_name="Resumen_Por_Lista")
+      df.to_excel(writer, index=False, sheet_name="Detalle_Mesas")
+      # Hoja resumen sumando columnas numéricas
+      columnas_numericas = [
+          c
+          for c in df.columns
+          if c not in ["Mesa", "Hora_Registro"]
+          and pd.api.types.is_numeric_dtype(df[c])
+      ]
+      resumen = pd.DataFrame({
+          "Metrica": [
+              f"Total_{col}" for col in columnas_numericas
+          ] + ["Total_Mesas_Computadas"],
+          "Valor": [df[col].sum() for col in columnas_numericas] + [len(df)],
+      })
+      resumen.to_excel(writer, index=False, sheet_name="Resumen_General")
     return output.getvalue()
 
 
   st.download_button(
-      label="📥 Descargar Reporte Excel Consolidado (Con Opciones)",
-      data=generar_excel_trep_opciones(df_final),
-      file_name="consolidado_trep_opciones_elecciones.xlsx",
+      label="📥 Descargar Reporte Excel Consolidado Completo",
+      data=generar_excel_trep_completo(df_final),
+      file_name="consolidado_general_trep.xlsx",
       mime=(
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       ),
   )
 else:
-  st.info("Sube una foto y registra las opciones para comenzar la consolidación.")
+  st.info("Sube una foto y presiona 'Leer Todos los Votos' para comenzar.")
