@@ -21,8 +21,8 @@ else:
 
 st.title("🗳️ Lector Automático de Certificados TREP con IA")
 st.markdown(
-    "Sube la foto del certificado TREP y la IA extraerá los datos de la mesa"
-    " y los votos detallados."
+    "Sube la foto del certificado TREP y la IA extraerá los votos desglosados"
+    " por Lista y Opción."
 )
 
 # Inicializar almacenamiento de actas en sesión
@@ -34,10 +34,10 @@ with st.sidebar:
   st.header("📊 Consolidado General")
   if len(st.session_state.actas_trep) > 0:
     df_res = pd.DataFrame(st.session_state.actas_trep)
-    st.metric("Mesas Procesadas", f"{len(df_res)}")
+    st.metric("Registros Procesados", f"{len(df_res)}")
     st.metric(
-        "Suma Total General",
-        f"{int(df_res['Total_General'].sum() if 'Total_General' in df_res else 0):,}",
+        "Suma Total Votos",
+        f"{int(df_res['Votos'].sum() if 'Votos' in df_res else 0):,}",
     )
 
     if st.button("🗑️ Reiniciar Todo", type="primary"):
@@ -60,9 +60,8 @@ if archivo_foto is not None:
     st.image(imagen, caption="Certificado TREP Cargado", use_column_width=True)
 
   with col2:
-    st.subheader("2. Extracción Automática con IA")
-    if st.button("🚀 Leer Datos del Acta", type="primary"):
-      # Comprobar si hay API key configurada
+    st.subheader("2. Extracción Automática con IA (Listas y Opciones)")
+    if st.button("🚀 Leer Votos por Opción", type="primary"):
       api_key_disponible = False
       if "GOOGLE_API_KEY" in st.secrets:
         api_key_disponible = True
@@ -72,125 +71,99 @@ if archivo_foto is not None:
       if not api_key_disponible:
         st.error("Por favor, ingresa tu API Key en la barra lateral izquierda.")
       else:
-        with st.spinner("Leyendo número de mesa, listas y votos del acta..."):
+        with st.spinner(
+            "Leyendo número de mesa y desglosando votos por lista y opción..."
+        ):
           try:
-            # Modelo actualizado requerido por Google AI Studio
             model = genai.GenerativeModel("gemini-3.8-flash")
             prompt = (
                 "Analiza detalladamente esta imagen de un Certificado de"
-                " Resultados TREP de Paraguay. Extrae con precisión los"
-                " siguientes datos de las columnas de la derecha (TOT) y"
-                " casilleros inferiores:\n"
-                "1. Nro_Mesa: (el número de mesa ubicado arriba, ej: 14)\n"
-                "2. Votos_Lista_1: (total columna TOT para la lista 1)\n"
-                "3. Votos_Lista_2: (total columna TOT para la lista 2)\n"
-                "4. Votos_Lista_3: (total columna TOT para la lista 3)\n"
-                "5. Votos_Lista_6: (total columna TOT para la lista 6)\n"
-                "6. Votos_Lista_7: (total columna TOT para la lista 7)\n"
-                "7. Votos_Lista_10: (total columna TOT para la lista 10)\n"
-                "8. Votos_Lista_16: (total columna TOT para la lista 16)\n"
-                "9. Votos_Lista_21: (total columna TOT para la lista 21)\n"
-                "10. Votos_Lista_300: (total columna TOT para la lista 300)\n"
-                "11. Votos_Blanco: (casillero BLC)\n"
-                "12. Votos_Nulos: (casillero NUL)\n"
-                "13. Total_General: (casillero TOT general)\n"
-                "Devuelve los valores numéricos claros asociados a cada"
-                " concepto."
+                " Resultados TREP de Paraguay. El certificado contiene una"
+                " cuadrícula llamada LI/OPC donde se cruzan las Listas"
+                " (filas: 1, 2, 3, 6, 7, 10, 16, 21, 300) y las Opciones"
+                " (columnas numeradas del 1 al 24).\n"
+                "Extrae el número de mesa (Nro_Mesa) y lista todos los"
+                " registros detallados en formato de tabla o lista clara que"
+                " contengan:\n"
+                "- Nro_Mesa\n"
+                "- Lista (ej: 1, 2, etc.)\n"
+                "- Opcion (ej: 1, 2, 3...)\n"
+                "- Votos (cantidad de votos para esa opción específica de esa"
+                " lista)\n"
+                "Incluye también los totales generales: BLC (blancos), NUL"
+                " (nulos) y TOT (total general)."
             )
 
             response = model.generate_content([imagen, prompt])
             st.session_state.ia_resultado = response.text
-            st.success("¡Lectura de acta completada!")
+            st.success("¡Lectura de opciones completada!")
           except Exception as e:
             st.error(f"Error al procesar la imagen: {e}")
 
-    # Formulario de confirmación con los datos extraídos
+    # Formulario de confirmación y desglose
     if "ia_resultado" in st.session_state:
       st.markdown("### 📋 Datos detectados por la IA:")
       st.info(st.session_state.ia_resultado)
 
-      with st.form("form_confirmar_trep"):
+      with st.form("form_confirmar_trep_opciones"):
         st.markdown(
-            "Verifica y ajusta los valores según el acta antes de guardar:"
+            "Ingresa o verifica el detalle por Lista y Opción a registrar en el"
+            " consolidado:"
         )
 
         c_mesa = st.text_input("Nro de Mesa:", value="14")
-        c_l1 = st.number_input(
-            "Votos Lista 1:", min_value=0, step=1, value=139
+        c_lista = st.selectbox(
+            "Número de Lista:", [1, 2, 3, 6, 7, 10, 16, 21, 300]
         )
-        c_l2 = st.number_input(
-            "Votos Lista 2:", min_value=0, step=1, value=27
+        c_opcion = st.number_input(
+            "Opción (Candidato/Preferencia):", min_value=1, max_value=24, step=1, value=1
         )
-        c_l3 = st.number_input(
-            "Votos Lista 3:", min_value=0, step=1, value=38
-        )
-        c_l6 = st.number_input("Votos Lista 6:", min_value=0, step=1, value=6)
-        c_l7 = st.number_input("Votos Lista 7:", min_value=0, step=1, value=0)
-        c_l10 = st.number_input("Votos Lista 10:", min_value=0, step=1, value=0)
-        c_l16 = st.number_input("Votos Lista 16:", min_value=0, step=1, value=4)
-        c_l21 = st.number_input("Votos Lista 21:", min_value=0, step=1, value=4)
-        c_l300 = st.number_input("Votos Lista 300:", min_value=0, step=1, value=0)
-        c_blc = st.number_input(
-            "Votos en Blanco (BLC):", min_value=0, step=1, value=10
-        )
-        c_nul = st.number_input("Votos Nulos (NUL):", min_value=0, step=1, value=0)
-        c_tot = st.number_input(
-            "Total General (TOT):", min_value=0, step=1, value=228
+        c_votos = st.number_input(
+            "Cantidad de Votos:", min_value=0, step=1, value=10
         )
 
-        btn_guardar_acta = st.form_submit_button(
-            "✅ Confirmar y Consolidar Acta", type="primary"
+        btn_guardar_item = st.form_submit_button(
+            "✅ Registrar Opción en Consolidado", type="primary"
         )
 
-        if btn_guardar_acta:
+        if btn_guardar_item:
           st.session_state.actas_trep.append({
               "Mesa": c_mesa,
-              "Lista_1": c_l1,
-              "Lista_2": c_l2,
-              "Lista_3": c_l3,
-              "Lista_6": c_l6,
-              "Lista_7": c_l7,
-              "Lista_10": c_l10,
-              "Lista_16": c_l16,
-              "Lista_21": c_l21,
-              "Lista_300": c_l300,
-              "Blanco": c_blc,
-              "Nulo": c_nul,
-              "Total_General": c_tot,
+              "Lista": c_lista,
+              "Opción": c_opcion,
+              "Votos": c_votos,
               "Hora": pd.Timestamp.now().strftime("%H:%M:%S"),
           })
-          st.success("¡Acta consolidada con éxito!")
-          del st.session_state.ia_resultado
+          st.success("¡Opción registrada con éxito!")
+          # No borramos ia_resultado de inmediato para seguir cargando opciones de la misma acta si se desea
           st.rerun()
 
 # --- TABLA Y DESCARGA DE EXCEL ---
 st.markdown("---")
-st.subheader("📋 Planilla Consolidada de Mesas Procesadas")
+st.subheader("📋 Planilla Consolidada por Listas y Opciones")
 
 if len(st.session_state.actas_trep) > 0:
   df_final = pd.DataFrame(st.session_state.actas_trep)
   st.dataframe(df_final, use_container_width=True, hide_index=True)
 
 
-  def generar_excel_trep(df):
+  def generar_excel_trep_opciones(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-      df.to_excel(writer, index=False, sheet_name="Detalle_Mesas")
-      resumen = pd.DataFrame({
-          "Metrica": ["Total Mesas Computadas", "Suma Total General Votos"],
-          "Valor": [len(df), df["Total_General"].sum()],
-      })
-      resumen.to_excel(writer, index=False, sheet_name="Resumen_General")
+      df.to_excel(writer, index=False, sheet_name="Detalle_Votos_Opciones")
+      resumen = df.groupby(["Mesa", "Lista"])["Votos"].sum().reset_index()
+      resumen.columns = ["Mesa", "Lista", "Total_Votos_Lista"]
+      resumen.to_excel(writer, index=False, sheet_name="Resumen_Por_Lista")
     return output.getvalue()
 
 
   st.download_button(
-      label="📥 Descargar Reporte Excel Consolidado",
-      data=generar_excel_trep(df_final),
-      file_name="consolidado_trep_elecciones.xlsx",
+      label="📥 Descargar Reporte Excel Consolidado (Con Opciones)",
+      data=generar_excel_trep_opciones(df_final),
+      file_name="consolidado_trep_opciones_elecciones.xlsx",
       mime=(
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       ),
   )
 else:
-  st.info("Sube la foto de un certificado TREP para comenzar el registro.")
+  st.info("Sube una foto y registra las opciones para comenzar la consolidación.")
